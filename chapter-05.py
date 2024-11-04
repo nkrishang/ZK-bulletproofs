@@ -15,6 +15,14 @@ def add_points(*points):
 def vector_commit(points, scalars):
     return reduce(add, [multiply(P, i) for P, i in zip(points, scalars)], Z1)
 
+def mod_inner(a, b, p):
+    return sum((x * y) % p for x, y in zip(a, b)) % p
+
+def mod_scalar_mul(arr, scalar, p):
+    return [(x * scalar) % p for x in arr]
+
+def mod_vec_add(a, b, p):
+    return [(x + y) % p for x, y in zip(a, b)]
 
 # these EC points have unknown discrete logs:
 G = [(FQ(6286155310766333871795042970372566906087502116590250812133967451320632869759), FQ(2167390362195738854837661032213065766665495464946848931705307210578191331138)),
@@ -34,49 +42,60 @@ B = (FQ(128486065350455871287888893172307515183924786911123755697753900951123306
 
 # remember to do all arithmetic modulo p
 def commit(a, sL, b, sR, alpha, beta, gamma, tau_1, tau_2):
-    pass
-    # return (A, S, V, T1, T2)
 
+    A = add_points(vector_commit(G, a), vector_commit(H, b), multiply(B, alpha))
+    S = add_points(vector_commit(G, sL), vector_commit(H, sR), multiply(B, beta))
+    V = add_points(multiply(G1, mod_inner(a,b, p)), multiply(B, gamma))
 
-def evaluate(f_0, f_1, f_2, u):
-    return (f_0 + f_1 * u + f_2 * u**2) % p
+    T1 = add_points(multiply(G1, (mod_inner(a, sR, p) + mod_inner(b, sL, p)) % p), multiply(B, tau_1))
+    T2 = add_points(multiply(G1, mod_inner(sR, sL, p)), multiply(B, tau_2))
 
-def prove(blinding_0, blinding_1, blinding_2, u):
-    # fill this in
-    # return pi
-    pass
+    # pass
+    return (A, S, V, T1, T2)
 
 ## step 0: Prover and verifier agree on G and B
 
 ## step 1: Prover creates the commitments
-a = np.array([89,15,90,22])
-b = np.array([16,18,54,12])
-sL = ...
-sR = ...
-t1 = ...
-t2 = ...
+a = [89,15,90,22]
+b = [16,18,54,12]
+sL = [123, 345, 567, 789]
+sR = [3443, 45454, 56565, 76767]
+t1 = mod_inner(a, sR, p) + mod_inner(b, sL, p)
+t2 = mod_inner(sR, sL, p)
 
 ### blinding terms
-alpha = ...
-beta = ...
-gamma = ...
-tau_1 = ...
-tau_2 = ...
+alpha = 8787878
+beta = 2323232
+gamma = 1212121
+tau_1 = 444444
+tau_2 = 57364816
 
 A, S, V, T1, T2 = commit(a, sL, b, sR, alpha, beta, gamma, tau_1, tau_2)
 
-## step 2: Verifier picks u
-u = ...
+# ## step 2: Verifier picks u
+u = random_element()
 
 ## step 3: Prover evaluates l(u), r(u), t(u) and creates evaluation proofs
-l_u = evaluate(a, sL, 0, u)
-r_u = evaluate(b, sR, 0, u)
-t_u = evaluate(np.inner(a,b), t1, t2, u)
+l_u = mod_vec_add(a, mod_scalar_mul(sL, u, p), p)
+r_u = mod_vec_add(b, mod_scalar_mul(sR, u, p), p)
 
-pi_lr = prove(alpha, beta, 0, u)
-pi_t = prove(gamma, tau_1, tau_2, u)
+term1 = mod_inner(a,b, p)
+
+temp = (mod_inner(a, sR, p) + mod_inner(b, sL, p)) % p
+term2 = mod_inner([temp], [u], p)
+
+temp = mod_inner(sR, sL, p)
+term3 = mod_inner([temp], [pow(u, 2, p)], p)
+
+# Combine all terms with modular addition
+t_u = (term1 + term2 + term3) % p
+
+pi_lr = alpha + mod_inner([beta], [u], p)
+pi_t = (gamma + mod_inner([tau_1], [u], p) + mod_inner([tau_2], [pow(u,2,p)], p)) % p
 
 ## step 4: Verifier accepts or rejects
-assert t_u == np.mod(np.inner(np.array(l_u), np.array(r_u)), p), "tu !=〈lu, ru〉"
-assert eq(add(A, commit(S, u)), add_points(vector_commit(G, l_u), vector_commit(H, r_u), multiply(B, pi_lr))), "l_u or r_u not evaluated correctly"
-assert eq(add(multiply(G, t_u), multiply(B, pi_t)), add_points(V, multiply(T1, u), multiply(T2, u**2 % p))), "t_u not evaluated correctly"
+assert t_u == mod_inner(l_u, r_u, p), "tu !=〈lu, ru〉"
+assert eq(add_points(A, multiply(S, u)), add_points(vector_commit(G, l_u), vector_commit(H, r_u), multiply(B, pi_lr))), "l_u or r_u not evaluated correctly"
+assert eq(add_points(multiply(G1, t_u), multiply(B, pi_t)), add_points(V, multiply(T1, u), multiply(T2, pow(u, 2, p)))), "t_u not evaluated correctly"
+
+print("accepted")
