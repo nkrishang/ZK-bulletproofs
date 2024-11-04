@@ -1,6 +1,5 @@
 from py_ecc.bn128 import G1, multiply, add, FQ, eq, Z1
 from py_ecc.bn128 import curve_order as p
-import numpy as np
 from functools import reduce
 import random
 
@@ -15,6 +14,15 @@ def add_points(*points):
 def vector_commit(points, scalars):
     return reduce(add, [multiply(P, i) for P, i in zip(points, scalars)], Z1)
 
+def mod_inner(a, b, p):
+    return sum((x * y) % p for x, y in zip(a, b)) % p
+
+def mod_scalar_mul(arr, scalar, p):
+    return [(x * scalar) % p for x in arr]
+
+def mod_vec_add(a, b, p):
+    return [(x + y) % p for x, y in zip(a, b)]
+
 # these EC points have unknown discrete logs:
 G_vec = [(FQ(6286155310766333871795042970372566906087502116590250812133967451320632869759), FQ(2167390362195738854837661032213065766665495464946848931705307210578191331138)),
      (FQ(6981010364086016896956769942642952706715308592529989685498391604818592148727), FQ(8391728260743032188974275148610213338920590040698592463908691408719331517047)),
@@ -23,18 +31,38 @@ G_vec = [(FQ(6286155310766333871795042970372566906087502116590250812133967451320
 
 # return a folded vector of length n/2 for scalars
 def fold(scalar_vec, u):
-    pass
-    # your code here
+    i = 0
+    vec = []
+    while i < len(a):
+        vec.append((mod_inner([scalar_vec[i]], [u], p) + mod_inner([scalar_vec[i+1]], [pow(u, -1, p)], p)) % p)
+        i += 2
+    
+    assert len(vec) == len(scalar_vec) / 2
+    return vec
 
 # return a folded vector of length n/2 for points
 def fold_points(point_vec, u):
-    pass
-    # your code here
+    i = 0
+    vec = []
+    while i < len(a):
+        vec.append(add_points(multiply(point_vec[i], u), multiply(point_vec[i+1], pow(u, -1, p))))
+        i += 2
+    
+    assert len(vec) == len(point_vec) / 2
+    return vec
 
 # return L, R as a tuple
 def compute_secondary_diagonal(G_vec, a):
-    pass
-    # your code here
+    R = Z1
+    L = Z1
+
+    for i in range(len(a)):
+        if i % 2 == 0:
+            R = add_points(R, multiply(G_vec[i], a[i+1]))
+        else:
+            L = add_points(L, multiply(G_vec[i], a[i-1]))
+
+    return L, R
 
 a = [9,45,23,42]
 
@@ -54,3 +82,5 @@ Gprime = fold_points(G_vec, pow(u, -1, p))
 # verification check
 assert eq(vector_commit(Gprime, aprime), add_points(multiply(L, pow(u, 2, p)), A, multiply(R, pow(u, -2, p)))), "invalid proof"
 assert len(Gprime) == len(a) // 2 and len(aprime) == len(a) // 2, "proof must be size n/2"
+
+print("accepted")

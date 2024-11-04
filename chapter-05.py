@@ -1,6 +1,5 @@
 from py_ecc.bn128 import G1, multiply, add, FQ, eq, Z1
 from py_ecc.bn128 import curve_order as p
-import numpy as np
 from functools import reduce
 import random
 
