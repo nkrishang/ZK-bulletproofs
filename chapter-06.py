@@ -48,7 +48,6 @@ def fold_points(point_vec, u):
         vec.append(add_points(multiply(point_vec[i], u), multiply(point_vec[i+1], pow(u, -1, p))))
         i += 2
     
-    assert len(vec) == len(point_vec) / 2
     return vec
 
 # return L, R as a tuple
@@ -64,7 +63,7 @@ def compute_secondary_diagonal(G_vec, a):
 
     return L, R
 
-a = [9,45,23,42]
+a = [9,45, 23, 42]
 
 # prover commits
 A = vector_commit(G_vec, a)
