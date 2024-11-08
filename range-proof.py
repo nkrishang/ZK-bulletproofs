@@ -1,6 +1,6 @@
 import random
 from libnum import has_sqrtmod_prime_power, sqrtmod_prime_power
-from py_ecc.bn128 import is_on_curve, FQ, multiply, add, eq, neg, Z1, curve_order as p
+from py_ecc.bn128 import is_on_curve, FQ, multiply, add, eq, neg, G1, Z1, curve_order as p
 from py_ecc.fields import field_properties
 from functools import reduce
 
@@ -30,6 +30,10 @@ def add_points(*points):
 # Inner product of an EC point vector and a scalar vector
 def vector_commit(points, scalars):
     return reduce(add, [multiply(P, i) for P, i in zip(points, scalars)], Z1)
+
+# Element-wise scalar and point vector multiplication mod curve order p
+def points_vec_mul(points, scalars):
+    return [multiply(x, y) for x, y in zip(points, scalars)]
 
 # Inner product of two scalar vectors mod curve order p
 def mod_inner(a, b, p):
@@ -82,6 +86,19 @@ def generateRandomECPointVec(n):
     return vector_basis
 
 ####################### HELPERS ###########################
+
+# Returns an array of the binary representation (little endian) of n
+def getBinaryAsArray(n):
+    if n < 0:
+        raise ValueError("Input must be a positive integer")
+    if n == 0:
+        return [0]
+        
+    binary = []
+    while n > 0:
+        binary.append(n & 1)  # Get least significant bit
+        n >>= 1              # Right shift by 1 (divide by 2)
+    return binary
 
 # Generate commitments vector polynomials
 def commit(a, sL, b, sR, alpha, beta, gamma, tau_1, tau_2, G_vec, H_vec, Q, B):
@@ -175,62 +192,101 @@ def verify(a, b, b_inv, P, G_vec, H_vec, Q):
 
 ####################### PROVE AND VERIFY ###########################
 
-def proveAndVerify(a, b):
-    assert len(a) == len(b), "vectors must be of same length"
-    assert len(a) == 1 or len(a) % 2 == 0, "vector length must be 1 or even"
+# Prove that v < 2^n
+def rangeProofAndVerify(v, n):
+
+    # Public factors
+    vec_1n = [1] * n
     
-    # Get vector length
-    n = len(a)
+    vec_2n = []
+    for i in range(n):
+        vec_2n.append(pow(2, i, p))
     
+    # Get binary representation of v
+    a_L = getBinaryAsArray(v)
+    a_R = mod_vec_add(a_L, mod_scalar_mul(vec_1n, -1, p), p)
+
     # Generate random EC point basis vectors G,H and a random EC point Q
     G_vec = generateRandomECPointVec(n)
     H_vec = generateRandomECPointVec(n)
     Q = generateRandomECPointVec(1)[0]
     B = generateRandomECPointVec(1)[0]
 
-    # Compute P: commitment to a,b and <a,b> = v
-    P = add_points(vector_commit(G_vec, a), vector_commit(H_vec, b), multiply(Q, mod_inner(a, b, p)))
+    # Prover blinding terms
+    alpha = random_field_element()
+    beta = random_field_element()
+    gamma = random_field_element()
+    tau_1 = random_field_element()
+    tau_2 = random_field_element()
 
-    verification = False
+    sL = random_scalar_vector(n)
+    sR = random_scalar_vector(n)
 
-    if n == 1:
-        verification = eq(P, add_points(vector_commit(G_vec, a), vector_commit(H_vec, b), multiply(Q, mod_inner(a, b, p))))
-    else:
-        # Prover blinding terms
-        alpha = random_field_element()
-        beta = random_field_element()
-        gamma = random_field_element()
-        tau_1 = random_field_element()
-        tau_2 = random_field_element()
+    # Prover commitments
+    A, S, V, _, _ = commit(a_L, sL, a_R, sR, alpha, beta, gamma, tau_1, tau_2, G_vec, H_vec, Q, B)
 
-        sL = random_scalar_vector(n)
-        sR = random_scalar_vector(n)
+    # Verifier sends randomness y,z and u
+    y = random_field_element()
+    z = random_field_element()
+    u = random_field_element()
 
-        # Prover creates the commitments
-        A, S, V, T1, T2 = commit(a, sL, b, sR, alpha, beta, gamma, tau_1, tau_2, G_vec, H_vec, Q, B)
+    vec_yn = []
+    vec_yn_inv = []
+    for i in range(len(a_L)):
+        vec_yn.append(pow(y, i, p))
+        vec_yn_inv.append(pow(y, -i, p))
 
-        # Verifier picks u
-        u = random_field_element()
-
-        # Compute l(u), r(u), t(u) and creates evaluation proofs
-        l_u = mod_vec_add(a, mod_scalar_mul(sL, u, p), p)
-        r_u = mod_vec_add(b, mod_scalar_mul(sR, u, p), p)
-        t_u = (mod_inner(a, b, p) + (((mod_inner(a, sR, p) + mod_inner(b, sL, p)) % p) * u) % p + ((mod_inner(sR, sL, p) * pow(u, 2, p))) % p) % p
-
-        pi_lr = alpha + (beta * u % p) % p
-        pi_t = (gamma + (tau_1 * u % p) + (tau_2 * u**2 % p)) % p
-
-        # Generate proof and verify
-        C = add_points(vector_commit(G_vec, l_u), vector_commit(H_vec, r_u))
-
-        verification = verify(l_u, r_u, r_u, add_points(C, multiply(Q, t_u)), G_vec, H_vec, Q) 
-        verification = verification and eq(C, add_points(A, multiply(S, u), neg(multiply(B, pi_lr))))
-        verification = verification and eq(multiply(Q, t_u), add_points(V, multiply(T1, u), multiply(T2, pow(u, 2, p)), neg(multiply(B, pi_t))))
+    # Compute l(u), r(u), t(u)
     
+    l_u_term1 = mod_vec_add(a_L, mod_scalar_mul(vec_1n, -z, p), p)
+    l_u_term2 = sL
+    l_u = mod_vec_add(l_u_term1, mod_scalar_mul(l_u_term2, u, p), p)
+
+    r_u_term1 = mod_vec_add(mod_vec_mul(vec_yn, mod_vec_add(a_R, mod_scalar_mul(vec_1n, z, p), p), p), mod_scalar_mul(vec_2n, pow(z, 2, p), p), p)
+    r_u_term2 = mod_vec_mul(vec_yn, sR, p)
+    r_u = mod_vec_add(r_u_term1, mod_scalar_mul(r_u_term2, u, p), p)
+
+    tu_term1 = mod_inner(l_u_term1, r_u_term1, p)
+    tu_term2 = (mod_inner(l_u_term1, r_u_term2, p) + mod_inner(l_u_term2, r_u_term1, p)) % p
+    tu_term3 = mod_inner(l_u_term2, r_u_term2, p)
+    t_u = (tu_term1 + (tu_term2 * u % p) + (tu_term3 * pow(u, 2, p) % p)) % p
+
+    pi_lr = alpha + (beta * u % p) % p
+    pi_t = ((gamma * pow(z, 2, p) % p) + (tau_1 * u % p) + (tau_2 * pow(u, 2, p) % p)) % p
+
+    T1 = add_points(multiply(Q, tu_term1), multiply(B, tau_1))
+    T2 = add_points(multiply(Q, tu_term2), multiply(B, tau_2))
+
+    # Verifier computes new basis vector H.y^-1
+    H_y_inv = points_vec_mul(H_vec, vec_yn_inv)
+    print(len(H_y_inv))
+
+    # Generate proof and verify
+    C = add_points(vector_commit(G_vec, l_u), vector_commit(H_y_inv, r_u))
+
+    verification = verify(l_u, r_u, r_u, add_points(C, multiply(Q, t_u)), G_vec, H_y_inv, Q) 
+
+    print(verification)
+
+    public1 = vector_commit(G_vec, mod_scalar_mul(vec_1n, -z, p))
+    public2 = vector_commit(H_y_inv, mod_vec_add(mod_scalar_mul(vec_yn, z, p), mod_scalar_mul(vec_2n, pow(z, 2, p), p), p))
+
+    verification = verification and eq(C, add_points(A, multiply(S, u), public1, public2, neg(multiply(B, pi_lr))))
+
+    print(verification)
+
+    public3 = ((((z - pow(z, 2, p)) % p) * mod_inner(vec_1n, vec_yn, p) % p) -  (pow(z, 3, p) * mod_inner(vec_1n, vec_2n, p) % p)) % p
+
+    print("\n", multiply(Q, t_u), "\n")
+    print(add_points(multiply(V, pow(z, 2, p)), multiply(Q, public3), multiply(T1, u), multiply(T2, pow(u, 2, p)), neg(multiply(B, pi_t))), "\n")
+
+    verification = verification and eq(multiply(Q, t_u), add_points(multiply(V, pow(z, 2, p)), multiply(Q, public3), multiply(T1, u), multiply(T2, pow(u, 2, p)), neg(multiply(B, pi_t))))
+
+    print(verification)
+
     return verification
 
-assert proveAndVerify(a1, b1), "invalid proof"
-assert proveAndVerify(a2, b2), "invalid proof"
-assert proveAndVerify(a3, b3), "invalid proof"
+
+assert rangeProofAndVerify(246, 8), "invalid range proof"
 
 print("accepted")
