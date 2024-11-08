@@ -249,7 +249,7 @@ def rangeProofAndVerify(v, n):
     tu_term1 = mod_inner(l_u_term1, r_u_term1, p)
     tu_term2 = (mod_inner(l_u_term1, r_u_term2, p) + mod_inner(l_u_term2, r_u_term1, p)) % p
     tu_term3 = mod_inner(l_u_term2, r_u_term2, p)
-    t_u = (tu_term1 + (tu_term2 * u % p) + (tu_term3 * pow(u, 2, p) % p)) % p
+    t_u = (tu_term1 + tu_term2 * u + tu_term3 * pow(u, 2, p)) % p
 
     pi_lr = alpha + (beta * u % p) % p
     pi_t = ((gamma * pow(z, 2, p) % p) + (tau_1 * u % p) + (tau_2 * pow(u, 2, p) % p)) % p
