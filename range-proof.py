@@ -7,20 +7,6 @@ from functools import reduce
 
 field_mod = field_properties["bn128"]["field_modulus"]
 
-# Test cases
-a1 = [808, 140, 166, 209]
-b1 = [88, 242, 404, 602]
-
-a2 = [433, 651]
-b2 = [282, 521]
-
-a3 = [222]
-b3 = [313]
-
-# Prove you know the inner product of a and b using a combination of the algorithm from Chapter 5 and Chapter 7.
-# Your interactive proof should transmit no more than logarithmic size data and be zero knowledge even if n = 1.
-# Use a random elliptic curve basis based on the algorithm from Chapter 1.
-
 ####################### EC & VECTOR OPERATIONS ###########################
 
 # Adds up multiple EC points
@@ -279,7 +265,7 @@ def rangeProofAndVerify(v, n):
         # z^3⟨1^n, 2^n⟩
         mod_inner([pow(z, 3, p)], [mod_inner(vec_1n, vec_2n, p)], p)
     ) % p
-    
+
     verification = verification and eq(add_points(multiply(Q, t_u), multiply(B, pi_t)), add_points(multiply(V, pow(z, 2, p)), multiply(Q, delta), multiply(T1, u), multiply(T2, pow(u, 2, p))))
 
     return verification
