@@ -223,7 +223,9 @@ def rangeProofAndVerify(v, n):
     sR = random_scalar_vector(n)
 
     # Prover commitments
-    A, S, V, _, _ = commit(a_L, sL, a_R, sR, alpha, beta, gamma, tau_1, tau_2, G_vec, H_vec, Q, B)
+    A = add_points(vector_commit(G_vec, a_L), vector_commit(H_vec, a_R), multiply(B, alpha))
+    S = add_points(vector_commit(G_vec, sL), vector_commit(H_vec, sR), multiply(B, beta))
+    V = add_points(multiply(Q, v), multiply(B, gamma))
 
     # Verifier sends randomness y,z and u
     y = random_field_element()
@@ -242,7 +244,7 @@ def rangeProofAndVerify(v, n):
     l_u_term2 = sL
     l_u = mod_vec_add(l_u_term1, mod_scalar_mul(l_u_term2, u, p), p)
 
-    r_u_term1 = mod_vec_add(mod_vec_mul(vec_yn, mod_vec_add(a_R, mod_scalar_mul(vec_1n, z, p), p), p), mod_scalar_mul(vec_2n, pow(z, 2, p), p), p)
+    r_u_term1 = mod_vec_add(mod_vec_add(mod_vec_mul(vec_yn, a_R, p), mod_scalar_mul(vec_yn, z, p), p), mod_scalar_mul(vec_2n, pow(z, 2, p), p), p)
     r_u_term2 = mod_vec_mul(vec_yn, sR, p)
     r_u = mod_vec_add(r_u_term1, mod_scalar_mul(r_u_term2, u, p), p)
 
@@ -254,35 +256,31 @@ def rangeProofAndVerify(v, n):
     pi_lr = alpha + (beta * u % p) % p
     pi_t = ((gamma * pow(z, 2, p) % p) + (tau_1 * u % p) + (tau_2 * pow(u, 2, p) % p)) % p
 
-    T1 = add_points(multiply(Q, tu_term1), multiply(B, tau_1))
-    T2 = add_points(multiply(Q, tu_term2), multiply(B, tau_2))
+    T1 = add_points(multiply(Q, tu_term2), multiply(B, tau_1))
+    T2 = add_points(multiply(Q, tu_term3), multiply(B, tau_2))
 
     # Verifier computes new basis vector H.y^-1
     H_y_inv = points_vec_mul(H_vec, vec_yn_inv)
-    print(len(H_y_inv))
 
     # Generate proof and verify
     C = add_points(vector_commit(G_vec, l_u), vector_commit(H_y_inv, r_u))
 
     verification = verify(l_u, r_u, r_u, add_points(C, multiply(Q, t_u)), G_vec, H_y_inv, Q) 
 
-    print(verification)
+    j = vector_commit(G_vec, mod_scalar_mul(vec_1n, -z, p))
+    k = vector_commit(H_y_inv, mod_vec_add(mod_scalar_mul(vec_yn, z, p), mod_scalar_mul(vec_2n, pow(z, 2, p), p), p))
 
-    public1 = vector_commit(G_vec, mod_scalar_mul(vec_1n, -z, p))
-    public2 = vector_commit(H_y_inv, mod_vec_add(mod_scalar_mul(vec_yn, z, p), mod_scalar_mul(vec_2n, pow(z, 2, p), p), p))
+    verification = verification and eq(C, add_points(A, multiply(S, u), j, k, neg(multiply(B, pi_lr))))
 
-    verification = verification and eq(C, add_points(A, multiply(S, u), public1, public2, neg(multiply(B, pi_lr))))
-
-    print(verification)
-
-    public3 = ((((z - pow(z, 2, p)) % p) * mod_inner(vec_1n, vec_yn, p) % p) -  (pow(z, 3, p) * mod_inner(vec_1n, vec_2n, p) % p)) % p
-
-    print("\n", multiply(Q, t_u), "\n")
-    print(add_points(multiply(V, pow(z, 2, p)), multiply(Q, public3), multiply(T1, u), multiply(T2, pow(u, 2, p)), neg(multiply(B, pi_t))), "\n")
-
-    verification = verification and eq(multiply(Q, t_u), add_points(multiply(V, pow(z, 2, p)), multiply(Q, public3), multiply(T1, u), multiply(T2, pow(u, 2, p)), neg(multiply(B, pi_t))))
-
-    print(verification)
+    # Then combine with the z terms
+    delta = (
+        # (z - z^2)⟨1^n, y^n⟩
+        mod_inner([((z - pow(z, 2, p)) % p)], [mod_inner(vec_1n, vec_yn, p)], p) - 
+        # z^3⟨1^n, 2^n⟩
+        mod_inner([pow(z, 3, p)], [mod_inner(vec_1n, vec_2n, p)], p)
+    ) % p
+    
+    verification = verification and eq(add_points(multiply(Q, t_u), multiply(B, pi_t)), add_points(multiply(V, pow(z, 2, p)), multiply(Q, delta), multiply(T1, u), multiply(T2, pow(u, 2, p))))
 
     return verification
 
