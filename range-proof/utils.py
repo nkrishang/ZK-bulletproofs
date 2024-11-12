@@ -1,4 +1,5 @@
 import random
+import math
 from libnum import has_sqrtmod_prime_power, sqrtmod_prime_power
 from py_ecc.bn128 import is_on_curve, FQ, multiply, add, Z1, curve_order as p
 from py_ecc.fields import field_properties
@@ -86,6 +87,13 @@ def generateRandomECPointVec(n):
 
 # Fold a scalar vector
 def fold(scalar_vec, u):
+    
+    length = len(scalar_vec)
+    n = next_power_of_2(length)
+
+    if not is_power_of_2(length):
+        scalar_vec = scalar_vec + [0]*(n-length)
+
     i = 0
     vec = []
     while i < len(scalar_vec):
@@ -95,12 +103,17 @@ def fold(scalar_vec, u):
 
 # Fold an EC points vector
 def fold_points(point_vec, u):
+    length = len(point_vec)
+    n = next_power_of_2(length)
+
+    if not is_power_of_2(length):
+        point_vec = point_vec + [Z1]*(n-length)
+
     i = 0
     vec = []
     while i < len(point_vec):
         vec.append(add_points(multiply(point_vec[i], u), multiply(point_vec[i+1], pow(u, -1, p))))
         i += 2
-    
     return vec
 
 # Compute the secondary diagonal L,R for a scalar vector and EC point vector
@@ -177,3 +190,5 @@ def next_power_of_2(n):
 
 def is_power_of_2(n):
     return n > 0 and (n & (n - 1)) == 0
+def log2(n):
+    return int(math.log2(n))

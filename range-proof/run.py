@@ -1,9 +1,9 @@
 from prover import Prover
 from verifier import Verifier
-from utils import generateRandomECPointVec
+from utils import generateRandomECPointVec, next_power_of_2, log2
 
-v = 246
-n = 8
+v = 50000
+n = 23
 
 assert n > 0
 
@@ -52,9 +52,9 @@ if n == 1:
 else:
     # Interactive proof
     u = 1
-    size = n
+    ctr = log2(next_power_of_2(n))
 
-    while size > 1:
+    while ctr > 0:
         # Prover commits off-diagonals L, R to verifier
         L, R = prover.generate_off_diagonals_L_R()
 
@@ -67,7 +67,7 @@ else:
         # Update witness
         prover.update_witness(u)
 
-        size //= 2
+        ctr -= 1
     
     # Get witness a,b, b_inv
     a, b, b_inv = prover.get_witness()
